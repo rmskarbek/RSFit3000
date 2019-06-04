@@ -289,6 +289,16 @@ function FitButton_Callback(hObject, eventdata, handles)
     set(handles.SlipFit_dc2Value, 'String', [ ]);
     set(handles.SlipRes, 'String',[ ]);    
     set(handles.SlipFlag, 'String', [ ]);
+%%% Clear any previously plotted fits.
+children = get(handles.FittingAxes, 'children');
+if numel(children) > 1
+    for i = 1:numel(children)
+        if strcmp('-', get(children(i), 'LineStyle'))
+            delete(children(i));
+        end
+    end
+end
+
     
 %%% Get the stuff.
     [x_0,x_e,v_i,v_f,NormStress,TimeOfStep,Slip_ZeroRef,Time_ZeroRef,...
@@ -477,7 +487,11 @@ if AgingLawFlag == 1
     set(handles.AgingFit_dcValue, 'String', d_c1String);
 %%% Plot the fit over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-    plot(handles.FittingAxes,Slip_f, Mu_f, 'r', 'LineWidth', 2);
+    if EventFlag
+        PAgingFit = plot(handles.FittingAxes,Slip_f, Mu_f, 'r', 'LineWidth', 2);
+    else
+        PAgingFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r', 'LineWidth', 2);
+    end
     hold(handles.FittingAxes, 'off');   
 %%% Store the fitted parameters and data.
     setappdata(handles.FitButton,'X0',x_0);
@@ -671,7 +685,11 @@ if SlipLawFlag == 1
     set(handles.SlipFit_dcValue, 'String', d_c1String);
 %%% Plot the fit over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-    plot(handles.FittingAxes,Slip_f, Mu_f, 'c', 'LineWidth', 2);
+    if EventFlag
+        PSlipFit = plot(handles.FittingAxes,Slip_f, Mu_f, 'c', 'LineWidth', 2);
+    else
+        PSlipFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c', 'LineWidth', 2);
+    end
     hold(handles.FittingAxes, 'off');
 %%% Store the fitted parameters and data.
     setappdata(handles.FitButton,'X0',x_0);
@@ -707,6 +725,43 @@ end
         set(handles.SlipFlag, 'String', num2str(exitflagS));
     end
     
+%%% Create the legend and place it based on the event type
+LegLoc = 'best';
+children = get(handles.FittingAxes, 'children');
+if AgingLawFlag == 1 && SlipLawFlag == 1    
+    if numel(children) > 3
+        PAgingTest = getappdata(handles.TestButton, 'Plot_ATest');
+        PSlipTest = getappdata(handles.TestButton, 'Plot_STest');
+        legend(handles.FittingAxes, [PAgingTest, PSlipTest, PAgingFit, PSlipFit],...
+            'Aging Law Test', 'Slip Law Test', 'Aging Law Fit', 'Slip Law Fit',...
+            'Location', LegLoc);
+    else
+        legend(handles.FittingAxes, [PAgingFit, PSlipFit], 'Aging Law Fit',...
+            'Slip Law Fit', 'Location', LegLoc);
+    end
+    setappdata(handles.TestButton, 'Plot_AFit', PAgingFit);
+    setappdata(handles.TestButton, 'Plot_SFit', PSlipFit);
+elseif AgingLawFlag == 1 && SlipLawFlag == 0
+    if numel(children) > 2
+        PAgingTest = getappdata(handles.TestButton, 'Plot_ATest');
+        legend(handles.FittingAxes, [PAgingTest, PAgingFit], 'Aging Law Test',...
+            'Aging Law Fit', 'Location', LegLoc);
+        setappdata(handles.TestButton, 'Plot_AFit', PAgingFit);
+    else
+        legend(handles.FittingAxes, PAgingFit, 'Aging Law Fit', 'Location',...
+            LegLoc);
+    end
+elseif AgingLawFlag == 0 && SlipLawFlag == 1
+    if numel(children) > 2
+        PSlipTest = getappdata(handles.TestButton, 'Plot_STest');
+        legend(handles.FittingAxes, [PSlipTest, PSlipFit], 'Slip Law Test',...
+            'Slip Law Fit', 'Location', LegLoc);
+        setappdata(handles.TestButton, 'Plot_SFit', PSlipFit);
+    else
+        legend(handles.FittingAxes, PSlipFit, 'Slip Law Fit', 'Location',...
+            LegLoc);
+    end
+end    
     
 function [x_0, x_e, v_i, v_f, NormStress, TimeOfStep, Slip_ZeroRef, Time_ZeroRef,...
     StateVarFlag, EventFlag, StiffnessFlag, MuFlag, Weight,...
@@ -780,6 +835,8 @@ function [x_0, x_e, v_i, v_f, NormStress, TimeOfStep, Slip_ZeroRef, Time_ZeroRef
         NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
         NormStress = NormStressZoom(ss);
     else
+        Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
+        Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
 %%% Slide-hold-slide values. Load, reload velocities.
         LoadVel_String = get(handles.LoadVelocityValue,'String');
         v_i = str2double(LoadVel_String);
@@ -788,20 +845,13 @@ function [x_0, x_e, v_i, v_f, NormStress, TimeOfStep, Slip_ZeroRef, Time_ZeroRef
 %%% Length of hold.
         HoldTime_String = get(handles.HoldTime,'String');
         HoldTime = str2double(HoldTime_String);
-%%% Get the time the hold initiates by finding the location of the hold
-%%% point in the slip data and pulling out the corresponding time.
-        slip_hold = get(handles.HoldSlipValue,'String');
-        SlipHold = str2double(slip_hold);
-        Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-        Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-        [~, ss] = min(abs(Slip_ZeroRef - SlipHold));
-        time_hold = get(handles.HoldSlipValue,'String');
-        TimeOfHold = str2double(time_hold);
+%%% Time when the hold initiates.
+        TimeOfHold = getappdata(handles.SetHoldButton,'Step_TimeValue');
         Holds{1} = HoldTime;
         Holds{2} = TimeOfHold;
 %%% Get the normal stress at the time of the hold.
-        NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
-        NormStress = NormStressZoom(ss);
+        NormStress_String = get(handles.LocNormStress,'string');
+        NormStress = str2double(NormStress_String);
 %%% Give empty set for TimeOfStep
         TimeOfStep = [];
     end
@@ -1700,10 +1750,19 @@ function DetrendButton_Callback(hObject, eventdata, handles)
     end
     Slip_ZeroRef = SlipZoom - SlipZoom(1);
     Time_ZeroRef = TimeZoom - TimeZoom(1);
-%%% See if there's any previous lines plotted and delete them.
-    plot(handles.FittingAxes,Slip_ZeroRef,Friction_Detrend,'k.');
-    xlabel(handles.FittingAxes,'Load Point Displacement (\mum)');
-    ylabel(handles.FittingAxes,'Friction Coefficient');
+%%% Plot detrended data in Fitting Axes. If 'velocity step' is selected in
+%%% the Event Type Panel, plot vs. displacement. If 'slide-hold-slide' is
+%%% selected, plot vs. time.
+    EventFlag = getappdata(handles.FitButton, 'EventFlag');
+    if EventFlag
+        plot(handles.FittingAxes,Slip_ZeroRef,Friction_Detrend,'k.');
+        xlabel(handles.FittingAxes,'Load Point Displacement (\mum)');
+        ylabel(handles.FittingAxes,'Friction Coefficient');
+    else
+        plot(handles.FittingAxes,Time_ZeroRef,Friction_Detrend,'k.');
+        xlabel(handles.FittingAxes,'Time (s)');
+        ylabel(handles.FittingAxes,'Friction Coefficient');
+    end
 %%% Store the zero-referenced data.
     setappdata(handles.DetrendButton,'FrictionDetrend_Data',Friction_Detrend);
     setappdata(handles.DetrendButton,'SlipZeroRef_Data',Slip_ZeroRef);
@@ -2114,15 +2173,7 @@ function SetHoldButton_Callback(hObject, eventdata, handles)
 
 %%% Plot the detrended friction data against zero referenced time.
     Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-    Friction_Detrend = getappdata(handles.DetrendButton,'FrictionDetrend_Data');
     Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-    figure;
-    plot(Time_ZeroRef, Friction_Detrend, 'k.')
-    xlabel('Time (s)')
-    ylabel('Friction Coefficient')
-%    plot(Time_ZeroRef, Slip_ZeroRef, 'k.')
-%    xlabel('Time (s)')
-%    ylabel('Load Point Displacement (\mum)')
 %%% Set the data point to be recorded when the left mouse button is
 %%% clicked.
     datacursormode on
@@ -2135,9 +2186,10 @@ function SetHoldButton_Callback(hObject, eventdata, handles)
     [~, ii] = min(abs(Time_ZeroRef - Position(1)));
     HoldSlip = Slip_ZeroRef(ii);
 %%% Display the values in the SHS Parameters panel    
-    set(handles.HoldSlipValue, 'String', num2str(HoldSlip));
+%    set(handles.HoldSlipValue, 'String', num2str(HoldSlip));
+    set(handles.HoldSlipValue, 'String', num2str(Position(1)));
     set(handles.HoldFrictionValue, 'String', num2str(Position(2)));
-%%% Store values.
+%%% Store values and the plot handle.
     setappdata(handles.SetHoldButton,'Step_TimeValue',Position(1));
     setappdata(handles.HoldSlipValue,'Step_SlipValue',HoldSlip);
     setappdata(handles.HoldFrictionValue,'Step_FrictionValue',Position(2));
@@ -2703,10 +2755,16 @@ Mu_f = bestY(4,:)';
 
 %%% Plot the test over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-    plot(handles.FittingAxes,Slip_f, Mu_f, 'r', 'LineWidth', 2,...
-        'LineStyle', '--');
+    if EventFlag
+        PAgingTest = plot(handles.FittingAxes,Slip_f, Mu_f, 'r', 'LineWidth',...
+            2, 'LineStyle', '--');
+    else
+        PAgingTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r',...
+            'LineWidth', 2, 'LineStyle', '--');
+    end
     hold(handles.FittingAxes, 'off');
 end
+
 
 if SlipLawFlag == 1
 %%% Slip law test.
@@ -2739,11 +2797,32 @@ Mu_f = bestY(4,:)';
 
 %%% Plot the test over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-    plot(handles.FittingAxes,Slip_f, Mu_f, 'c', 'LineWidth', 2,...
-        'LineStyle', '--');
+    if EventFlag
+        PSlipTest = plot(handles.FittingAxes,Slip_f, Mu_f, 'c',...
+            'LineWidth', 2, 'LineStyle', '--');
+    else
+        PSlipTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c',...
+            'LineWidth', 2, 'LineStyle', '--');
+    end
     hold(handles.FittingAxes, 'off');
 end
 
+%%% Create the legend and place it based on the event type
+LegLoc = 'best';
+if AgingLawFlag == 1 && SlipLawFlag == 1
+    legend(handles.FittingAxes, [PAgingTest, PSlipTest],...
+        'Aging Law Test', 'Slip Law Test', 'Location', LegLoc);
+    setappdata(handles.TestButton, 'Plot_ATest', PAgingTest);
+    setappdata(handles.TestButton, 'Plot_STest', PSlipTest);
+elseif AgingLawFlag == 1 && SlipLawFlag == 0
+    legend(handles.FittingAxes, PAgingTest, 'Aging Law Test', 'Location',...
+        LegLoc);
+    setappdata(handles.TestButton, 'Plot_ATest', PAgingTest);
+elseif AgingLawFlag == 0 && SlipLawFlag == 1
+    legend(handles.FittingAxes, PSlipTest, 'Slip Law Test', 'Location',...
+        LegLoc);
+    setappdata(handles.TestButton, 'Plot_STest', PSlipTest);
+end
 
 function Guess_alphaValue_Callback(hObject, eventdata, handles)
 % hObject    handle to Guess_alphaValue (see GCBO)
@@ -3171,12 +3250,33 @@ function ClearTestLines_Callback(hObject, eventdata, handles)
 
 %%% See if there's any test lines plotted and delete them.
 children = get(handles.FittingAxes, 'children');
+EventFlag = getappdata(handles.FitButton, 'EventFlag');
 if numel(children) > 1
     for i = 1:numel(children)
+%%% Check if fit lines are present.
+        if strcmp('Aging Law Fit', get(children(i), 'DisplayName'))
+            PAgingFit = getappdata(handles.TestButton, 'Plot_AFit');        
+        elseif strcmp('Slip Law Fit', get(children(i), 'DisplayName'))
+            PSlipFit = getappdata(handles.TestButton, 'Plot_SFit');
+        end
         if strcmp('--', get(children(i), 'LineStyle'))
             delete(children(i));
         end
     end
+%%% Reset the legend
+    LegLoc = 'best';
+    if exist('PAgingFit', 'var') && exist('PSlipFit', 'var')
+        legend(handles.FittingAxes, [PAgingFit, PSlipFit], 'Aging Law Fit',...
+            'Slip Law Fit', 'Location', LegLoc);
+    elseif exist('PAgingFit', 'var') && exist('PSlipFit', 'var') == 0
+        legend(handles.FittingAxes, PAgingFit, 'Aging Law Fit',...
+             'Location', LegLoc);
+    elseif exist('PAgingFit', 'var') == 0 && exist('PSlipFit', 'var')
+        legend(handles.FittingAxes, PSlipFit, 'Slip Law Fit',...
+             'Location', LegLoc);
+    else
+        legend('off');
+    end    
 end
 
 % --- Executes on button press in ClearFitLines.
@@ -3187,11 +3287,32 @@ function ClearFitLines_Callback(hObject, eventdata, handles)
 
 %%% See if there's any fit lines plotted and delete them.
 children = get(handles.FittingAxes, 'children');
+EventFlag = getappdata(handles.FitButton, 'EventFlag');
 if numel(children) > 1
     for i = 1:numel(children)
+%%% Check if test lines are present.
+        if strcmp('Aging Law Test', get(children(i), 'DisplayName'))
+            PAgingTest = getappdata(handles.TestButton, 'Plot_ATest');        
+        elseif strcmp('Slip Law Test', get(children(i), 'DisplayName'))
+            PSlipTest = getappdata(handles.TestButton, 'Plot_STest');
+        end
         if strcmp('-', get(children(i), 'LineStyle'))
             delete(children(i));
         end
+    end
+%%% Reset the legend
+    LegLoc = 'best';
+    if exist('PAgingTest', 'var') && exist('PSlipTest', 'var')
+        legend(handles.FittingAxes, [PAgingTest, PSlipTest], 'Aging Law Test',...
+            'Slip Law Test', 'Location', LegLoc);
+    elseif exist('PAgingTest', 'var') && exist('PSlipTest', 'var') == 0
+        legend(handles.FittingAxes, PAgingTest, 'Aging Law Test',...
+            'Location', LegLoc);
+    elseif exist('PAgingTest', 'var') == 0 && exist('PSlipTest', 'var')
+        legend(handles.FittingAxes, PSlipTest, 'Slip Law Test',...
+            'Location', LegLoc);
+    else
+        legend('off');
     end
 end
 
