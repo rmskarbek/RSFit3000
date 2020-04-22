@@ -578,7 +578,7 @@ if SlipLawFlag == 1
             b2Error = ErrorsS(5,1);
             d_c2Error = ErrorsS(6,1);
             aminusbError = 2*sqrt((aError/2)^2 + (b1Error/2)^2 + (b2Error/2)^2 ...
-                + 2*CovarS(3,5) - 2*CovarS(2,3) - 2*CovarA(2,5));
+                + 2*CovarS(3,5) - 2*CovarS(2,3) - 2*CovarS(2,5));
         elseif StiffnessFlag == true && MuFlag == false
             N = numel(Time_ZeroRef) - 6;
             jacS = jacobian(:,2:7);
@@ -1287,7 +1287,7 @@ end
         StepData = struct('LoadPointDisplacementData', SlipZoom, 'FrictionData', FrictionZoom,...
             'FrictionDataDetrended', Friction_Detrend, 'TimeData', TimeZoom,...
             'NormalStressData', NormalStressZoom, 'DetrendParameters', [],...
-            'FittingOptions', [], 'VelocityStepParameters', [], 'GuessParameters', [],...
+            'FittingOptions', [], 'VelocityStepParameters', [], 'TrialParameters', [],...
             'AgingLawParameters', [], 'SlipLawParameters', [], 'AgingLawFit',...
             AgingFitData, 'SlipLawFit', SlipFitData, 'WeightInfo', []);
         
@@ -1324,7 +1324,7 @@ end
         StepData = struct('LoadPointDisplacementData', SlipZoom, 'FrictionData', FrictionZoom,...
             'FrictionDataDetrended', Friction_Detrend, 'TimeData', TimeZoom,...
             'NormalStressData', NormalStressZoom, 'DetrendParameters', [],...
-            'FittingOptions', [], 'HoldParameters', [], 'GuessParameters', [],...
+            'FittingOptions', [], 'HoldParameters', [], 'TrialParameters', [],...
             'AgingLawParameters', [], 'SlipLawParameters', [], 'AgingLawFit',...
             AgingFitData, 'SlipLawFit', SlipFitData, 'WeightInfo', []);
         
@@ -1382,7 +1382,7 @@ end
     kString = get(handles.Guess_kValue,'String');
     k = str2double(kString);    
     
-    StepData.GuessParameters = struct('mu_0', mu_i, 'a', a, 'b1',...
+    StepData.TrialParameters = struct('mu_0', mu_i, 'a', a, 'b1',...
         b, 'b2', x_0(6), 'd_c1', d_c, 'd_c2', x_0(7), 'stiffness', k);
     
 if isempty(x_fAging)
@@ -1826,6 +1826,19 @@ function PlotButton_Callback(hObject, eventdata, handles)
     TimeData = evalin('base', TimeDataString);
     NormStressDataString = get(handles.P_cDataName, 'String');
     NormStressData = evalin('base', NormStressDataString);
+%%% Check orientation of vectors.
+    if size(SlipData,1) == 1
+        SlipData = SlipData';
+    end
+    if size(FrictionData,1) == 1
+        FrictionData = FrictionData';
+    end
+    if size(TimeData,1) == 1
+        TimeData = TimeData';
+    end
+    if size(NormStressData,1) == 1
+        NormStressData = NormStressData';
+    end
 %%% Check if using sample slip data.
     SampleSlipFlag = getappdata(handles.FitButton, 'SampleSlipFlag');
     if SampleSlipFlag
@@ -2185,8 +2198,13 @@ function SetHoldButton_Callback(hObject, eventdata, handles)
 %%% Find the zero reference slip value corresponding to the selected time.
     [~, ii] = min(abs(Time_ZeroRef - Position(1)));
     HoldSlip = Slip_ZeroRef(ii);
+%%% Plot the displacement time series for the windowed data, showing the
+%%% location of the selected hold
+    figure;plot(Time_ZeroRef, Slip_ZeroRef, 'k.', Position(1), Slip_ZeroRef(ii),...
+        'ro','MarkerFaceColor','r')
+    xlabel('Time (s)')
+    ylabel('Load Point Displacement (\mum)')      
 %%% Display the values in the SHS Parameters panel    
-%    set(handles.HoldSlipValue, 'String', num2str(HoldSlip));
     set(handles.HoldSlipValue, 'String', num2str(Position(1)));
     set(handles.HoldFrictionValue, 'String', num2str(Position(2)));
 %%% Store values and the plot handle.
@@ -3114,6 +3132,8 @@ function WeightLocButton_Callback(hObject, eventdata, handles)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    structure with handles and user data (see GUIDATA)
 
+    Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
+    Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
 %%% Set the data point to be recorded when the left mouse button is
 %%% clicked.
     datacursormode on
@@ -3122,20 +3142,31 @@ function WeightLocButton_Callback(hObject, eventdata, handles)
     dcm_Info = getCursorInfo(cursorMode);
     Position = dcm_Info.Position;
     datacursormode off
-    set(handles.WeightSlipValue, 'String', num2str(Position(1)));
+    EventFlag = getappdata(handles.FitButton, 'EventFlag');
+    if EventFlag
+        WeightSlip = Position(1);
+    else
+        [~, ii] = min(abs(Time_ZeroRef - Position(1)));
+        WeightSlip = Slip_ZeroRef(ii);
+    end
+    set(handles.WeightSlipValue, 'String', num2str(WeightSlip));
     set(handles.WeightFrictionValue, 'String', num2str(Position(2)));
 %%% Store slip value for detrending later.
-    setappdata(handles.WeightSlipValue,'Weight_SlipValue',Position(1));
+    setappdata(handles.WeightSlipValue,'Weight_SlipValue',WeightSlip);
     setappdata(handles.WeightFrictionValue,'Weight_SlipValue',Position(2));
-%%% Calculate the weights and plot in a new window.
-    Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
+%%% Calculate the weights and plot in a new window.    
     [Weight, WeightInfo] = WeightCalc(handles);
     figure;
-    semilogy(Slip_ZeroRef, Weight, 'k', 'LineWidth', 2);
-    xlabel('Load Point Displacement (\mum)');
+    if EventFlag
+        semilogy(Slip_ZeroRef, Weight, 'k', 'LineWidth', 2);
+        xlabel('Load Point Displacement (\mum)');
+    else
+        semilogy(Time_ZeroRef, Weight, 'k', 'LineWidth', 2);
+        xlabel('Time (s)');
+    end
     ylabel('Weight (N / i_w)^p');
-    title(['N = ', num2str(WeightInfo(1)), ' total data points, i_w = ', num2str(WeightInfo(2)),...
-        ', p = ', num2str(WeightInfo(3))]);
+    title(['N = ', num2str(WeightInfo(1)), ' total data points, i_w = ',...
+        num2str(WeightInfo(2)), ', p = ', num2str(WeightInfo(3))]);
 
 function [Weight, WeightInfo] = WeightCalc(handles)
     Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
